@@ -216,51 +216,50 @@ async function selectFirstAvailableTicket(page: Page) {
 async function clickOrderNow(page: Page) {
   console.log("➡️ Menyiapkan Order Now...");
 
-  const orderButton = page.locator(
-    "#buy_ticket"
-  );
+  // const orderButton = page.locator(
+  //   "#buy_ticket"
+  // );
 
-  await orderButton.waitFor({
-    state: "visible",
-    timeout: 15_000,
-  });
+  const orderButton = page.getByRole('button', { name: 'Order Now' });
 
-  const disabled =
-    await orderButton.isDisabled();
+  // await orderButton.waitFor({
+  //   state: "visible",
+  //   timeout: 15_000,
+  // });
 
-  console.log(
-    `🔘 Button disabled: ${disabled}`
-  );
+  // const disabled =
+  //   await orderButton.isDisabled();
 
-  if (disabled) {
-    throw new Error(
-      "Order Now masih disabled."
-    );
-  }
+  // console.log(
+  //   `🔘 Button disabled: ${disabled}`
+  // );
 
-  await orderButton.scrollIntoViewIfNeeded();
+  // if (disabled) {
+  //   throw new Error(
+  //     "Order Now masih disabled."
+  //   );
+  // }
 
-  const box =
-    await orderButton.boundingBox();
+  // await orderButton.scrollIntoViewIfNeeded();
 
-  if (!box) {
-    throw new Error(
-      "Order Now tidak memiliki bounding box."
-    );
-  }
+  // const box =
+  //   await orderButton.boundingBox();
 
-  console.log(
-    `📍 Order Now: x=${Math.round(
-      box.x
-    )}, y=${Math.round(box.y)}`
-  );
+  // if (!box) {
+  //   throw new Error(
+  //     "Order Now tidak memiliki bounding box."
+  //   );
+  // }
+
+  // console.log(
+  //   `📍 Order Now: x=${Math.round(
+  //     box.x
+  //   )}, y=${Math.round(box.y)}`
+  // );
 
   console.log("🖱️ Klik Order Now...");
 
-  await orderButton.click({
-    timeout: 10_000,
-    force: true,
-  });
+  await orderButton.click();
 
   console.log(
     "✅ Event click selesai."
@@ -599,28 +598,28 @@ async function completePersonalInformation(
 async function waitForPayment(page: Page) {
   console.log("🏦 Menunggu payment tab...");
 
-  const paymentTab = page.locator(
-    '[role="tab"].reserve-payment-tab__item'
-  );
+  const paymentTab = page.getByRole('tablist', { name: 'Payment type' }).getByText('Pay Now');
 
-  // Tunggu elemen muncul di DOM
-  await paymentTab.first().waitFor({
-    state: "attached",
-    timeout: 20_000
-  });
+  await paymentTab.click();
 
-  console.log("🔎 Jumlah payment tab:", await paymentTab.count());
+  // // Tunggu elemen muncul di DOM
+  // await paymentTab.first().waitFor({
+  //   state: "attached",
+  //   timeout: 20_000
+  // });
 
-  if (await paymentTab.count() === 0) {
-    throw new Error("❌ Payment tab tidak ditemukan.");
-  }
+  // console.log("🔎 Jumlah payment tab:", await paymentTab.count());
 
-  for (let i = 0; i < await paymentTab.count(); i++) {
-    console.log(
-      `TAB ${i}:`,
-      await paymentTab.nth(i).innerText().catch(() => "")
-    );
-  }
+  // if (await paymentTab.count() === 0) {
+  //   throw new Error("❌ Payment tab tidak ditemukan.");
+  // }
+
+  // for (let i = 0; i < await paymentTab.count(); i++) {
+  //   console.log(
+  //     `TAB ${i}:`,
+  //     await paymentTab.nth(i).innerText().catch(() => "")
+  //   );
+  // }
 
   console.log("✅ Payment tab ditemukan.");
 }
@@ -636,25 +635,18 @@ async function selectVirtualAccount(
     "🏦 Mencari Virtual Account..."
   );
 
-  const virtualAccount = page
-    .locator(
-      '[class*="accordion_header"], [class*="accordion-header"]'
-    )
-    .filter({
-      hasText: /^Virtual Account$/i,
-    })
-    .first();
+  const virtualAccount = page.getByRole('heading', { name: 'Virtual Account' });
 
-  await virtualAccount.waitFor({
-    state: "visible",
-    timeout: 10_000,
-  });
+  // await virtualAccount.waitFor({
+  //   state: "visible",
+  //   timeout: 10_000,
+  // });
 
-  console.log(
-    "✅ Virtual Account ditemukan."
-  );
+  // console.log(
+  //   "✅ Virtual Account ditemukan."
+  // );
 
-  await virtualAccount.scrollIntoViewIfNeeded();
+  // await virtualAccount.scrollIntoViewIfNeeded();
 
   console.log(
     "🖱️ Membuka Virtual Account..."
@@ -666,23 +658,23 @@ async function selectVirtualAccount(
     "✅ Virtual Account dibuka."
   );
 
-  // Tunggu BCA
-  await page
-    .getByText(
-      "Virtual Account BCA",
-      {
-        exact: true,
-      }
-    )
-    .first()
-    .waitFor({
-      state: "visible",
-      timeout: 10_000,
-    });
+  // // Tunggu BCA
+  // await page
+  //   .getByText(
+  //     "Virtual Account BCA",
+  //     {
+  //       exact: true,
+  //     }
+  //   )
+  //   .first()
+  //   .waitFor({
+  //     state: "visible",
+  //     timeout: 10_000,
+  //   });
 
-  console.log(
-    "✅ Virtual Account BCA muncul."
-  );
+  // console.log(
+  //   "✅ Virtual Account BCA muncul."
+  // );
 }
 
 // ============================================================
@@ -697,63 +689,73 @@ async function selectBCA(
   );
 
   // Cari teks BCA
-  const bcaText = page
-    .getByText(
-      "Virtual Account BCA",
-      {
-        exact: true,
-      }
-    )
-    .first();
+  const bca = page.getByText('Virtual Account BCA', { exact: true }).first();
 
-  await bcaText.waitFor({
-    state: "visible",
-    timeout: 10_000,
+  await bca.waitFor({
+    state: 'visible',
+    timeout: 10_000
   });
 
-  // Cari radio terdekat dari teks BCA.
-  const bcaContainer = bcaText.locator(
-    "xpath=ancestor::*[.//input[@type='radio']][1]"
-  );
+  await bca.click();
 
-  const bcaRadio = bcaContainer.locator(
-    'input[type="radio"]'
-  ).first();
+  console.log("✅ BCA berhasil diklik");
+  // const bcaText = page
+  //   .getByText(
+  //     "Virtual Account BCA",
+  //     {
+  //       exact: true,
+  //     }
+  //   )
+  //   .first();
 
-  if (
-    await bcaRadio.count() === 0
-  ) {
-    throw new Error(
-      "Radio BCA tidak ditemukan."
-    );
-  }
+  // await bcaText.waitFor({
+  //   state: "visible",
+  //   timeout: 10_000,
+  // });
 
-  console.log(
-    "🖱️ Klik radio BCA..."
-  );
+  // // Cari radio terdekat dari teks BCA.
+  // const bcaContainer = bcaText.locator(
+  //   "xpath=ancestor::*[.//input[@type='radio']][1]"
+  // );
 
-  await bcaRadio.check({
-    force: true,
-  });
+  // const bcaRadio = bcaContainer.locator(
+  //   'input[type="radio"]'
+  // ).first();
 
-  await waitShort(300);
+  // if (
+  //   await bcaRadio.count() === 0
+  // ) {
+  //   throw new Error(
+  //     "Radio BCA tidak ditemukan."
+  //   );
+  // }
 
-  const checked =
-    await bcaRadio.isChecked();
+  // console.log(
+  //   "🖱️ Klik radio BCA..."
+  // );
 
-  console.log(
-    `🔘 BCA checked: ${checked}`
-  );
+  // await bcaRadio.check({
+  //   force: true,
+  // });
 
-  if (!checked) {
-    throw new Error(
-      "Radio BCA gagal dipilih."
-    );
-  }
+  // await waitShort(300);
 
-  console.log(
-    "✅ Virtual Account BCA dipilih."
-  );
+  // const checked =
+  //   await bcaRadio.isChecked();
+
+  // console.log(
+  //   `🔘 BCA checked: ${checked}`
+  // );
+
+  // if (!checked) {
+  //   throw new Error(
+  //     "Radio BCA gagal dipilih."
+  //   );
+  // }
+
+  // console.log(
+  //   "✅ Virtual Account BCA dipilih."
+  // );
 }
 
 // ============================================================
@@ -822,6 +824,11 @@ async function waitForCheckout(
     "⏳ Menunggu Checkout..."
   );
 
+  const nextButton = page.getByRole('button', { name: 'Next' });
+  await nextButton.click();
+  const confirmethodpaymentButton = page.getByRole('button', { name: 'OK', exact: true });
+  await confirmethodpaymentButton.click();
+
   // LOKET bisa SPA transition,
   // jadi jangan hanya mengandalkan URL.
   const orderReview = page
@@ -848,9 +855,13 @@ async function waitForCheckout(
     );
   }
 
+  const confirmPaymentButton = page.getByRole('button', { name: 'Pay Now' });
+  await confirmPaymentButton.click();
+
   console.log(
     `📍 URL sekarang: ${page.url()}`
   );
+
 }
 
 // ============================================================
