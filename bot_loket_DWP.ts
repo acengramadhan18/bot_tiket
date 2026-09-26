@@ -10,8 +10,6 @@ dotenv.config();
 const EVENT_URL =
   "https://www.loket.com/event/dwp-2026_wVb9?utm_source=eventseruuntukmu&utm_medium=website&utm_content=enterprise&utm_campaign=2857lkt12dwp2026";
 
-const PROFILE_DIR = "./browser-profile";
-
 // ============================================================
 // USER DATA
 // ============================================================
@@ -216,46 +214,7 @@ async function selectFirstAvailableTicket(page: Page) {
 async function clickOrderNow(page: Page) {
   console.log("➡️ Menyiapkan Order Now...");
 
-  // const orderButton = page.locator(
-  //   "#buy_ticket"
-  // );
-
   const orderButton = page.getByRole('button', { name: 'Order Now' });
-
-  // await orderButton.waitFor({
-  //   state: "visible",
-  //   timeout: 15_000,
-  // });
-
-  // const disabled =
-  //   await orderButton.isDisabled();
-
-  // console.log(
-  //   `🔘 Button disabled: ${disabled}`
-  // );
-
-  // if (disabled) {
-  //   throw new Error(
-  //     "Order Now masih disabled."
-  //   );
-  // }
-
-  // await orderButton.scrollIntoViewIfNeeded();
-
-  // const box =
-  //   await orderButton.boundingBox();
-
-  // if (!box) {
-  //   throw new Error(
-  //     "Order Now tidak memiliki bounding box."
-  //   );
-  // }
-
-  // console.log(
-  //   `📍 Order Now: x=${Math.round(
-  //     box.x
-  //   )}, y=${Math.round(box.y)}`
-  // );
 
   console.log("🖱️ Klik Order Now...");
 
@@ -406,7 +365,6 @@ async function completePersonalInformation(
     "🔘 Memilih Gender..."
   );
 
-  // Berdasarkan DOM yang terlihat sebelumnya:
   // gender_1 = Male
   const maleRadio = page.locator(
     "#gender_1"
@@ -480,7 +438,6 @@ async function completePersonalInformation(
     `🔘 Gender checked: ${genderChecked}`
   );
 
-  // Print checkbox status
   const checkboxes = page.locator(
     'input[type="checkbox"]'
   );
@@ -554,72 +511,12 @@ async function completePersonalInformation(
 // 7. WAIT PAYMENT
 // ============================================================
 
-// async function waitForPayment(
-//   page: Page
-// ) {
-//   console.log(
-//     "💳 Menunggu halaman Payment..."
-//   );
-
-//   const tabPayNow = page.locator(
-//   '.reserve-payment-tab__item[role="tab"]'
-// );
-
-//   await tabPayNow.waitFor({
-//     state: "visible",
-//     timeout: 10_000,
-//   });
-
-//   await tabPayNow.click();
-
-//   // Payment Method
-//   await page
-//     .getByText(
-//       "Payment Method",
-//       {
-//         exact: true,
-//       }
-//     )
-//     .first()
-//     .waitFor({
-//       state: "visible",
-//       timeout: 15_000,
-//     });
-
-//   console.log(
-//     "✅ Halaman Payment terbuka."
-//   );
-
-//   console.log(
-//     `📍 URL: ${page.url()}`
-//   );
-// }
-
 async function waitForPayment(page: Page) {
   console.log("🏦 Menunggu payment tab...");
 
   const paymentTab = page.getByRole('tablist', { name: 'Payment type' }).getByText('Pay Now');
 
   await paymentTab.click();
-
-  // // Tunggu elemen muncul di DOM
-  // await paymentTab.first().waitFor({
-  //   state: "attached",
-  //   timeout: 20_000
-  // });
-
-  // console.log("🔎 Jumlah payment tab:", await paymentTab.count());
-
-  // if (await paymentTab.count() === 0) {
-  //   throw new Error("❌ Payment tab tidak ditemukan.");
-  // }
-
-  // for (let i = 0; i < await paymentTab.count(); i++) {
-  //   console.log(
-  //     `TAB ${i}:`,
-  //     await paymentTab.nth(i).innerText().catch(() => "")
-  //   );
-  // }
 
   console.log("✅ Payment tab ditemukan.");
 }
@@ -637,17 +534,6 @@ async function selectVirtualAccount(
 
   const virtualAccount = page.getByRole('heading', { name: 'Virtual Account' });
 
-  // await virtualAccount.waitFor({
-  //   state: "visible",
-  //   timeout: 10_000,
-  // });
-
-  // console.log(
-  //   "✅ Virtual Account ditemukan."
-  // );
-
-  // await virtualAccount.scrollIntoViewIfNeeded();
-
   console.log(
     "🖱️ Membuka Virtual Account..."
   );
@@ -657,24 +543,6 @@ async function selectVirtualAccount(
   console.log(
     "✅ Virtual Account dibuka."
   );
-
-  // // Tunggu BCA
-  // await page
-  //   .getByText(
-  //     "Virtual Account BCA",
-  //     {
-  //       exact: true,
-  //     }
-  //   )
-  //   .first()
-  //   .waitFor({
-  //     state: "visible",
-  //     timeout: 10_000,
-  //   });
-
-  // console.log(
-  //   "✅ Virtual Account BCA muncul."
-  // );
 }
 
 // ============================================================
@@ -688,7 +556,6 @@ async function selectBCA(
     "🔘 Memilih BCA..."
   );
 
-  // Cari teks BCA
   const bca = page.getByText('Virtual Account BCA', { exact: true }).first();
 
   await bca.waitFor({
@@ -699,63 +566,6 @@ async function selectBCA(
   await bca.click();
 
   console.log("✅ BCA berhasil diklik");
-  // const bcaText = page
-  //   .getByText(
-  //     "Virtual Account BCA",
-  //     {
-  //       exact: true,
-  //     }
-  //   )
-  //   .first();
-
-  // await bcaText.waitFor({
-  //   state: "visible",
-  //   timeout: 10_000,
-  // });
-
-  // // Cari radio terdekat dari teks BCA.
-  // const bcaContainer = bcaText.locator(
-  //   "xpath=ancestor::*[.//input[@type='radio']][1]"
-  // );
-
-  // const bcaRadio = bcaContainer.locator(
-  //   'input[type="radio"]'
-  // ).first();
-
-  // if (
-  //   await bcaRadio.count() === 0
-  // ) {
-  //   throw new Error(
-  //     "Radio BCA tidak ditemukan."
-  //   );
-  // }
-
-  // console.log(
-  //   "🖱️ Klik radio BCA..."
-  // );
-
-  // await bcaRadio.check({
-  //   force: true,
-  // });
-
-  // await waitShort(300);
-
-  // const checked =
-  //   await bcaRadio.isChecked();
-
-  // console.log(
-  //   `🔘 BCA checked: ${checked}`
-  // );
-
-  // if (!checked) {
-  //   throw new Error(
-  //     "Radio BCA gagal dipilih."
-  //   );
-  // }
-
-  // console.log(
-  //   "✅ Virtual Account BCA dipilih."
-  // );
 }
 
 // ============================================================
@@ -778,7 +588,7 @@ async function confirmBCA(
   try {
     await confirmation.waitFor({
       state: "visible",
-      timeout: 5_000,
+      timeout: 1_000,
     });
 
     console.log(
@@ -794,7 +604,7 @@ async function confirmBCA(
 
     await okButton.waitFor({
       state: "visible",
-      timeout: 5_000,
+      timeout: 1_000,
     });
 
     console.log(
@@ -829,8 +639,6 @@ async function waitForCheckout(
   const confirmethodpaymentButton = page.getByRole('button', { name: 'OK', exact: true });
   await confirmethodpaymentButton.click();
 
-  // LOKET bisa SPA transition,
-  // jadi jangan hanya mengandalkan URL.
   const orderReview = page
     .getByText(
       "Order Review",
@@ -855,17 +663,16 @@ async function waitForCheckout(
     );
   }
 
-  const confirmPaymentButton = page.getByRole('button', { name: 'Pay Now' });
-  await confirmPaymentButton.click();
+  const lastconfirmPaymentButton = page.getByRole('button', { name: 'Pay Now' });
+  await lastconfirmPaymentButton.click();
 
   console.log(
     `📍 URL sekarang: ${page.url()}`
   );
-
 }
 
 // ============================================================
-// 12. MAIN
+// 12. MAIN (INCOGNITO MODE)
 // ============================================================
 
 async function main() {
@@ -874,7 +681,7 @@ async function main() {
     "=========================================="
   );
   console.log(
-    "       LOKET DWP 2026 BOT"
+    "    LOKET DWP 2026 BOT (INCOGNITO MODE)"
   );
   console.log(
     "=========================================="
@@ -883,26 +690,25 @@ async function main() {
 
   validateUser();
 
-  const context =
-    await chromium.launchPersistentContext(
-      PROFILE_DIR,
-      {
-        headless: false,
+  // 1. Jalankan browser Chromium dengan flag incognito
+  const browser = await chromium.launch({
+    headless: false,
+    args: [
+      "--disable-blink-features=AutomationControlled",
+      "--incognito"
+    ],
+  });
 
-        viewport: {
-          width: 1366,
-          height: 768,
-        },
+  // 2. Buat context baru yang terisolasi/bersih dari cache & cookies
+  const context = await browser.newContext({
+    viewport: {
+      width: 1366,
+      height: 768,
+    },
+  });
 
-        args: [
-          "--disable-blink-features=AutomationControlled",
-        ],
-      }
-    );
-
-  const page =
-    context.pages()[0] ??
-    await context.newPage();
+  // 3. Buka halaman di dalam context incognito
+  const page = await context.newPage();
 
   try {
     // --------------------------------------------------------
@@ -917,9 +723,7 @@ async function main() {
     // TICKET
     // --------------------------------------------------------
 
-    await selectFirstAvailableTicket(
-      page
-    );
+    await selectFirstAvailableTicket(page);
 
     // --------------------------------------------------------
     // ORDER
@@ -931,13 +735,9 @@ async function main() {
     // PERSONAL INFORMATION
     // --------------------------------------------------------
 
-    await fillPersonalInformation(
-      page
-    );
+    await fillPersonalInformation(page);
 
-    await completePersonalInformation(
-      page
-    );
+    await completePersonalInformation(page);
 
     // --------------------------------------------------------
     // PAYMENT
@@ -945,9 +745,7 @@ async function main() {
 
     await waitForPayment(page);
 
-    await selectVirtualAccount(
-      page
-    );
+    await selectVirtualAccount(page);
 
     await selectBCA(page);
 
@@ -980,8 +778,7 @@ async function main() {
       "Lakukan pembayaran secara manual."
     );
 
-    // Jangan tutup browser supaya user
-    // bisa melanjutkan pembayaran.
+    // Tahan browser agar tetap terbuka
     await new Promise(() => {});
   } catch (error) {
     console.log("");
@@ -1002,6 +799,7 @@ async function main() {
     );
 
     await context.close();
+    await browser.close();
   }
 }
 
