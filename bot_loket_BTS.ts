@@ -28,6 +28,11 @@ const USER = {
   gender: process.env.GENDER ?? "",
 };
 
+const TICKET_TARGET = {
+  categoryName: process.env.TICKET_CATEGORY ?? "", // Nilai default jika env kosong
+  quantity: process.env.TICKET_QUANTITY ?? "",
+};
+
 // ============================================================
 // HELPER
 // ============================================================
@@ -66,6 +71,8 @@ function validateUser() {
     ["DOB_DAY", USER.dobDay],
     ["DOB_MONTH", USER.dobMonth],
     ["DOB_YEAR", USER.dobYear],
+    ["TICKET_CATEGORY", TICKET_TARGET.categoryName],
+    ["TICKET_QUANTITY", TICKET_TARGET.quantity],
   ];
 
   const missing = required
@@ -80,9 +87,32 @@ function validateUser() {
 }
 
 // ============================================================
+// HANDLE COOKIE POPUP
+// ============================================================
+async function dismissCookieBanner(page: Page) {
+  try {
+    // Cari tombol Accept berdasarkan teks "Accept"
+    const acceptBtn = page.locator('button').filter({
+      hasText: /^Accept$/i
+    }).first();
+
+    // Tunggu sebentar (misal max 3 detik) kalau pop-up muncul
+    await acceptBtn.waitFor({ state: "visible", timeout: 3_000 });
+    await acceptBtn.click();
+    console.log("🍪 Pop-up Cookie berhasil ditutup (Accept).");
+  } catch (e) {
+    // Jika pop-up tidak muncul, lewati tanpa error
+    console.log("ℹ️ Pop-up Cookie tidak muncul.");
+  }
+}
+
+// ============================================================
 // 1. OPEN EVENT
 // ============================================================
 
+// ============================================================
+// 1. OPEN EVENT
+// ============================================================
 async function openEvent(page: Page) {
   console.log("🌐 Membuka event...");
 
@@ -90,12 +120,6 @@ async function openEvent(page: Page) {
     waitUntil: "domcontentloaded",
     timeout: 30_000,
   });
-
-  console.log("⏳ Menunggu halaman event...");
-
-  await page.waitForLoadState("networkidle", {
-    timeout: 15_000,
-  }).catch(() => {});
 
   console.log("✅ Event terbuka.");
 }
@@ -109,21 +133,9 @@ async function clickBuyTicket(page: Page) {
 // Mengambil semua elemen tombol Buy Ticket
 const buyButtons = page.locator('button:has-text("Buy Ticket")');
 
-// Ambil tombol pertama (Indeks 0)
-const firstBtn = buyButtons.nth(0);
-
-// Ambil tombol kedua (Indeks 1)
-const secondBtn = buyButtons.nth(1);
-const thirdBtn = buyButtons.nth(2);
-const fourthBtn = buyButtons.nth(3);
-const fifthBtn = buyButtons.nth(4);
-const sixthBtn = buyButtons.nth(5);
-const seventhBtn = buyButtons.nth(6);
-const eightBtn = buyButtons.nth(7);
-
   await buyButtons.waitFor({
     state: "visible",
-    timeout: 15_000,
+    timeout: 5_000,
   });
 
   await buyButtons.scrollIntoViewIfNeeded();
@@ -138,77 +150,72 @@ const eightBtn = buyButtons.nth(7);
 }
 
 // ============================================================
-// 3. FIND FIRST AVAILABLE TICKET
+// 3. FIND FIRST AVAILABLE TICKET (RADIX UI OPTIMIZED)
 // ============================================================
-
 async function selectFirstAvailableTicket(page: Page) {
-  console.log(
-    "🔎 Mencari tiket pertama yang tersedia..."
-  );
+  console.log("🔎 Mencari tombol 'Pilih' pada kategori pertama...");
 
-  // Tunggu bagian tiket muncul
-  await page
-    .getByText(/DIAMOND VIP/i)
-    .first()
-    .waitFor({
+  // 1. Lokasi tombol 'Pilih' menggunakan filter fleksibel
+  const pilihButtons = page.locator('button').filter({
+    hasText: /pilih/i
+  });
+
+  // 2. Tunggu setidaknya 1 tombol 'Pilih' terlihat di layar
+  try {
+    await pilihButtons.first().waitFor({
       state: "visible",
       timeout: 15_000,
-    })
-    .catch(() => {});
-
-  // ----------------------------------------------------------
-  // Cari card tiket yang memiliki kontrol quantity.
-  // Tiket Sold Out biasanya tidak memiliki select quantity.
-  // ----------------------------------------------------------
-
-  const quantitySelects = page.locator(
-    'select'
-  );
-
-  const selectCount = await quantitySelects.count();
-
-  console.log(
-    `🔍 Ditemukan ${selectCount} control quantity.`
-  );
-
-  let selected = false;
-
-  for (let i = 0; i < selectCount; i++) {
-    const select = quantitySelects.nth(i);
-
-    if (!(await select.isVisible().catch(() => false))) {
-      continue;
+    });
+  } catch (e) {
+    // Fallback: Jika tidak ditemukan via teks 'Pilih', cari via aria/role Radix UI
+    const radixButtons = page.locator('button[aria-haspopup="menu"]');
+    if ((await radixButtons.count()) > 0) {
+      console.log("⚠️ Menggunakan selector fallback Radix UI...");
+      await radixButtons.first().waitFor({ state: "visible", timeout: 5_000 });
+      await radixButtons.first().scrollIntoViewIfNeeded();
+      await radixButtons.first().click();
+      return await pickQuantity(page);
     }
-
-    // Cek apakah select ini berada pada area tiket
-    const parentText = await select
-      .locator("xpath=..")
-      .innerText()
-      .catch(() => "");
-
-    console.log(
-      `🎟️ Ticket option ${i}: ${parentText
-        .replace(/\s+/g, " ")
-        .slice(0, 100)}`
-    );
-
-    // Quantity 1
-    await select.selectOption("1");
-
-    console.log(
-      `🎟️ Tiket pertama yang available: index ${i}`
-    );
-
-    console.log("✅ Quantity = 1");
-
-    selected = true;
-    break;
+    
+    throw new Error("❌ Tombol 'Pilih' tidak ditemukan di layar atau kategori Sold Out.");
   }
 
-  if (!selected) {
-    throw new Error(
-      "Tidak menemukan tiket available."
-    );
+  const count = await pilihButtons.count();
+  console.log(`🔍 Ditemukan ${count} tombol 'Pilih' tiket yang tersedia.`);
+
+  // 3. Scroll dan Klik tombol paling atas (kategori pertama yang tersedia)
+  const targetBtn = pilihButtons.first();
+  await targetBtn.scrollIntoViewIfNeeded();
+
+  console.log("🖱️ Membuka dropdown pilihan tiket...");
+  await targetBtn.click();
+  await waitShort(300);
+    // 🍪 Tutup pop-up cookie jika muncul
+
+
+  // 4. Pilih angka/jumlah tiket dari dropdown menu yang terbuka
+  await pickQuantity(page);
+}
+
+// Helper function untuk memilih jumlah tiket
+async function pickQuantity(page: Page, quantity = "1") {
+  console.log(`🔢 Memilih jumlah tiket (${quantity})...`);
+
+  // Target item menu Radix UI dengan angka yang sesuai
+  const optionItem = page
+    .locator('[role="menuitem"], [role="option"], div, button')
+    .filter({
+      hasText: new RegExp(`^${quantity}$`)
+    })
+    .first();
+
+  try {
+    await optionItem.waitFor({ state: "visible", timeout: 5_000 });
+    await optionItem.click();
+    console.log(`✅ Berhasil memilih ${quantity} tiket.`);
+  } catch (e) {
+    console.log("⚠️ Fallback klik opsi angka digunakan...");
+    await page.locator(`text="${quantity}"`).last().click();
   }
 
   await waitShort(500);
@@ -218,43 +225,43 @@ async function selectFirstAvailableTicket(page: Page) {
 // 4. CLICK ORDER NOW
 // ============================================================
 
-async function clickOrderNow(page: Page) {
-  console.log("➡️ Menyiapkan Pesan Sekarang...");
+// async function clickOrderNow(page: Page) {
+//   console.log("➡️ Menyiapkan Pesan Sekarang...");
 
-  const orderButton = page.getByRole('button', { name: 'Pesan Sekarang' });
+//   const orderButton = page.getByRole('button', { name: 'Pesan Sekarang' });
 
-  console.log("🖱️ Klik Pesan Sekarang...");
+//   console.log("🖱️ Klik Pesan Sekarang...");
 
-  await orderButton.click();
+//   await orderButton.click();
 
-  console.log(
-    "✅ Event click selesai."
-  );
+//   console.log(
+//     "✅ Event click selesai."
+//   );
 
-  console.log(
-    "⏳ Menunggu Personal Information..."
-  );
+//   console.log(
+//     "⏳ Menunggu Personal Information..."
+//   );
 
-  // Jangan hanya mengandalkan perubahan URL.
-  const firstNameInput = page
-    .locator(
-      'input[name="firstname"], input#firstname'
-    )
-    .first();
+//   // Jangan hanya mengandalkan perubahan URL.
+//   const firstNameInput = page
+//     .locator(
+//       'input[name="firstname"], input#firstname'
+//     )
+//     .first();
 
-  await firstNameInput.waitFor({
-    state: "visible",
-    timeout: 15_000,
-  });
+//   await firstNameInput.waitFor({
+//     state: "visible",
+//     timeout: 15_000,
+//   });
 
-  console.log(
-    "✅ Personal Information terbuka."
-  );
+//   console.log(
+//     "✅ Personal Information terbuka."
+//   );
 
-  console.log(
-    `📍 URL: ${page.url()}`
-  );
-}
+//   console.log(
+//     `📍 URL: ${page.url()}`
+//   );
+// }
 
 // ============================================================
 // 5. FILL PERSONAL INFORMATION
@@ -731,6 +738,7 @@ async function main() {
     // --------------------------------------------------------
 
     await selectFirstAvailableTicket(page);
+    await dismissCookieBanner(page);
 
     // --------------------------------------------------------
     // ORDER
