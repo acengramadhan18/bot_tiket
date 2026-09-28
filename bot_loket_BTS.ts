@@ -29,8 +29,8 @@ const USER = {
 };
 
 const TICKET_TARGET = {
-  categoryName: process.env.TICKET_CATEGORY ?? "", // Nilai default jika env kosong
-  quantity: process.env.TICKET_QUANTITY ?? "",
+  categoryName: process.env.TICKET_CATEGORY ?? "",
+  quantity: process.env.TICKET_QUANTITY ?? "1",
 };
 
 // ============================================================
@@ -87,22 +87,19 @@ function validateUser() {
 }
 
 // ============================================================
-// HANDLE COOKIE POPUP
+// HANDLE COOKIE POPUP (SPECIFIC DOM CLASS)
 // ============================================================
 async function dismissCookieBanner(page: Page) {
   try {
-    // Cari tombol Accept berdasarkan teks "Accept"
-    const acceptBtn = page.locator('button').filter({
-      hasText: /^Accept$/i
-    }).first();
+    // Selector spesifik dari CookieYes DOM (.cky-btn-accept & data-cky-tag)
+    const acceptBtn = page.locator('.cky-btn-accept, button[data-cky-tag="accept-button"]').first();
 
-    // Tunggu sebentar (misal max 3 detik) kalau pop-up muncul
-    await acceptBtn.waitFor({ state: "visible", timeout: 3_000 });
-    await acceptBtn.click();
-    console.log("🍪 Pop-up Cookie berhasil ditutup (Accept).");
-  } catch (e) {
-    // Jika pop-up tidak muncul, lewati tanpa error
-    console.log("ℹ️ Pop-up Cookie tidak muncul.");
+    await acceptBtn.waitFor({ state: "visible", timeout: 2_500 });
+    await acceptBtn.click({ force: true });
+    console.log("🍪 Pop-up Cookie (.cky-btn-accept) berhasil ditutup!");
+    await waitShort(300);
+  } catch {
+    // Abaikan jika pop-up cookie tidak muncul di layar
   }
 }
 
@@ -110,9 +107,6 @@ async function dismissCookieBanner(page: Page) {
 // 1. OPEN EVENT
 // ============================================================
 
-// ============================================================
-// 1. OPEN EVENT
-// ============================================================
 async function openEvent(page: Page) {
   console.log("🌐 Membuka event...");
 
@@ -120,6 +114,9 @@ async function openEvent(page: Page) {
     waitUntil: "domcontentloaded",
     timeout: 30_000,
   });
+
+  // Bersihkan cookie banner segera setelah halaman terbuka
+  await dismissCookieBanner(page);
 
   console.log("✅ Event terbuka.");
 }
@@ -130,8 +127,7 @@ async function openEvent(page: Page) {
 
 async function clickBuyTicket(page: Page) {
   console.log("🎟️ Mencari tombol pembelian...");
-// Mengambil semua elemen tombol Buy Ticket
-const buyButtons = page.locator('button:has-text("Buy Ticket")');
+  const buyButtons = page.locator('button:has-text("Buy Ticket")');
 
   await buyButtons.waitFor({
     state: "visible",
@@ -142,7 +138,7 @@ const buyButtons = page.locator('button:has-text("Buy Ticket")');
 
   console.log("✅ Tombol Beli Tiket ditemukan.");
 
-  await buyButtons.click();
+  await buyButtons.click({ force: true });
 
   console.log("🖱️ Beli Tiket diklik.");
 
@@ -150,561 +146,66 @@ const buyButtons = page.locator('button:has-text("Buy Ticket")');
 }
 
 // ============================================================
-// 3. FIND FIRST AVAILABLE TICKET (RADIX UI OPTIMIZED)
+// 3. FIND FIRST AVAILABLE TICKET & PICK QUANTITY (FAST VERSION)
 // ============================================================
 async function selectFirstAvailableTicket(page: Page) {
   console.log("🔎 Mencari tombol 'Pilih' pada kategori pertama...");
 
-  // 1. Lokasi tombol 'Pilih' menggunakan filter fleksibel
-  const pilihButtons = page.locator('button').filter({
+  // Tutup cookie banner SEKALI saja di awal sebelum klik
+  await dismissCookieBanner(page);
+
+  // 1. Lokasi tombol 'Pilih'
+  const pilihButton = page.locator('button').filter({
     hasText: /pilih/i
-  });
+  }).first();
 
-  // 2. Tunggu setidaknya 1 tombol 'Pilih' terlihat di layar
-  try {
-    await pilihButtons.first().waitFor({
-      state: "visible",
-      timeout: 15_000,
-    });
-  } catch (e) {
-    // Fallback: Jika tidak ditemukan via teks 'Pilih', cari via aria/role Radix UI
-    const radixButtons = page.locator('button[aria-haspopup="menu"]');
-    if ((await radixButtons.count()) > 0) {
-      console.log("⚠️ Menggunakan selector fallback Radix UI...");
-      await radixButtons.first().waitFor({ state: "visible", timeout: 5_000 });
-      await radixButtons.first().scrollIntoViewIfNeeded();
-      await radixButtons.first().click();
-      return await pickQuantity(page);
-    }
-    
-    throw new Error("❌ Tombol 'Pilih' tidak ditemukan di layar atau kategori Sold Out.");
-  }
-
-  const count = await pilihButtons.count();
-  console.log(`🔍 Ditemukan ${count} tombol 'Pilih' tiket yang tersedia.`);
-
-  // 3. Scroll dan Klik tombol paling atas (kategori pertama yang tersedia)
-  const targetBtn = pilihButtons.first();
-  await targetBtn.scrollIntoViewIfNeeded();
+  await pilihButton.waitFor({ state: "visible", timeout: 15_000 });
+  await pilihButton.scrollIntoViewIfNeeded();
 
   console.log("🖱️ Membuka dropdown pilihan tiket...");
-  await targetBtn.click();
-  await waitShort(300);
-    // 🍪 Tutup pop-up cookie jika muncul
+  await pilihButton.click({ force: true });
 
-
-  // 4. Pilih angka/jumlah tiket dari dropdown menu yang terbuka
-  await pickQuantity(page);
+  // 2. Langsung pilih jumlah tiket tanpa jeda penantian cookie
+  await pickQuantity(page, TICKET_TARGET.quantity || "1");
 }
 
-// Helper function untuk memilih jumlah tiket
+// Helper khusus untuk memilih jumlah tiket dari Popover Radix UI
 async function pickQuantity(page: Page, quantity = "1") {
   console.log(`🔢 Memilih jumlah tiket (${quantity})...`);
 
-  // Target item menu Radix UI dengan angka yang sesuai
+  // Selector cepat langsung menyasar item angka di portal Radix
   const optionItem = page
-    .locator('[role="menuitem"], [role="option"], div, button')
+    .locator('[role="menuitem"], [role="option"], button, div')
     .filter({
-      hasText: new RegExp(`^${quantity}$`)
+      hasText: new RegExp(`^\\s*${quantity}\\s*$`)
     })
     .first();
 
   try {
-    await optionItem.waitFor({ state: "visible", timeout: 5_000 });
-    await optionItem.click();
+    // Beri timeout singkat (1 detik) agar jika cepat langsung terklik
+    await optionItem.waitFor({ state: "visible", timeout: 1_000 });
+    await optionItem.click({ force: true });
     console.log(`✅ Berhasil memilih ${quantity} tiket.`);
   } catch (e) {
-    console.log("⚠️ Fallback klik opsi angka digunakan...");
-    await page.locator(`text="${quantity}"`).last().click();
+    // Fallback instan jika selector role tidak langsung merespons
+    console.log("⚠️ Fallback klik opsi angka...");
+    await page.getByText(quantity, { exact: true }).last().click({ force: true });
   }
-
-  await waitShort(500);
 }
 
 // ============================================================
-// 4. CLICK ORDER NOW
-// ============================================================
-
-// async function clickOrderNow(page: Page) {
-//   console.log("➡️ Menyiapkan Pesan Sekarang...");
-
-//   const orderButton = page.getByRole('button', { name: 'Pesan Sekarang' });
-
-//   console.log("🖱️ Klik Pesan Sekarang...");
-
-//   await orderButton.click();
-
-//   console.log(
-//     "✅ Event click selesai."
-//   );
-
-//   console.log(
-//     "⏳ Menunggu Personal Information..."
-//   );
-
-//   // Jangan hanya mengandalkan perubahan URL.
-//   const firstNameInput = page
-//     .locator(
-//       'input[name="firstname"], input#firstname'
-//     )
-//     .first();
-
-//   await firstNameInput.waitFor({
-//     state: "visible",
-//     timeout: 15_000,
-//   });
-
-//   console.log(
-//     "✅ Personal Information terbuka."
-//   );
-
-//   console.log(
-//     `📍 URL: ${page.url()}`
-//   );
-// }
-
-// ============================================================
-// 5. FILL PERSONAL INFORMATION
-// ============================================================
-
-// async function fillPersonalInformation(
-//   page: Page
-// ) {
-//   console.log(
-//     "📝 Mengisi Personal Information..."
-//   );
-
-//   // First Name
-//   const firstName = page.locator(
-//     'input[name="firstname"], input#firstname'
-//   ).first();
-
-//   if (await firstName.count() > 0) {
-//     await firstName.fill(USER.firstName);
-//   }
-
-  // Last Name
-//   const lastName = page.locator(
-//     'input[name="lastname"], input#lastname'
-//   ).first();
-
-//   if (await lastName.count() > 0) {
-//     await lastName.fill(USER.lastName);
-//   }
-
-//   // Email
-//   const email = page.locator(
-//     'input[name="email"], input#email'
-//   ).first();
-
-//   if (await email.count() > 0) {
-//     await email.fill(USER.email);
-//   }
-
-  // Phone
-//   const phone = page.locator(
-//     'input[name="telephone"], input#telephone'
-//   ).first();
-
-//   if (await phone.count() > 0) {
-//     await phone.fill(USER.phone);
-//   }
-
-//   // Identity
-//   const identity = page.locator(
-//     'input[name="identity_id"], input#identity_id'
-//   ).first();
-
-//   if (await identity.count() > 0) {
-//     await identity.fill(
-//       USER.identityId
-//     );
-//   }
-
-  // ----------------------------------------------------------
-  // DATE OF BIRTH
-  // ----------------------------------------------------------
-
-//   const dobDay = page.locator(
-//     'select[name="dob_day"]'
-//   ).first();
-
-//   if (await dobDay.count() > 0) {
-//     await dobDay.selectOption(
-//       USER.dobDay
-//     );
-//   }
-
-//   const dobMonth = page.locator(
-//     'select[name="dob_month"]'
-//   ).first();
-
-//   if (await dobMonth.count() > 0) {
-//     await dobMonth.selectOption(
-//       USER.dobMonth
-//     );
-//   }
-
-//   const dobYear = page.locator(
-//     'select[name="dob_year"]'
-//   ).first();
-
-//   if (await dobYear.count() > 0) {
-//     await dobYear.selectOption(
-//       USER.dobYear
-//     );
-//   }
-
-//   console.log(
-//     "✅ Data personal terisi."
-//   );
-// }
-
-// ============================================================
-// 6. SELECT GENDER + CHECK AGREEMENTS
-// ============================================================
-
-// async function completePersonalInformation(
-//   page: Page
-// ) {
-//   console.log(
-//     "📝 Menyelesaikan Personal Information..."
-//   );
-
-  // ==========================================================
-  // GENDER
-  // ==========================================================
-
-//   console.log(
-//     "🔘 Memilih Gender..."
-//   );
-
-//   // gender_1 = Male
-//   const maleRadio = page.locator(
-//     "#gender_1"
-//   );
-
-//   await maleRadio.waitFor({
-//     state: "visible",
-//     timeout: 10_000,
-//   });
-
-//   if (
-//     !(await maleRadio.isChecked())
-//   ) {
-//     await maleRadio.check({
-//       force: true,
-//     });
-//   }
-
-//   console.log(
-//     "✅ Gender Male dipilih."
-//   );
-
-  // ==========================================================
-  // TERMS & CONDITIONS
-  // ==========================================================
-
-//   console.log("☑️ Mencari checkbox Terms & Conditions...");
-
-//   const termsCheckbox = page.locator('#accept_toc');
-
-//   await termsCheckbox.waitFor({
-//     state: "visible",
-//     timeout: 10_000,
-//   });
-
-//   await termsCheckbox.check();
-
-//   console.log("✅ Terms & Conditions dicentang.");
-
-  // ==========================================================
-  // PERSONAL DATA PROCESSING POLICY
-  // ==========================================================
-
-//   console.log(
-//     "☑️ Mencari Personal Data Processing Policy..."
-//   );
-
-//   const privacyCheckbox = page.locator('#accept_consent');
-
-//   await privacyCheckbox.waitFor({
-//     state: "visible",
-//     timeout: 10_000,
-//   });
-
-//   await privacyCheckbox.check();
-
-//   console.log(
-//     "✅ Personal Data Processing Policy dicentang."
-//   );
-
-//   await waitShort(500);
-
-  // ==========================================================
-  // VALIDASI
-  // ==========================================================
-
-//   const genderChecked =
-//     await maleRadio.isChecked();
-
-//   console.log(
-//     `🔘 Gender checked: ${genderChecked}`
-//   );
-
-//   const checkboxes = page.locator(
-//     'input[type="checkbox"]'
-//   );
-
-//   const checkboxCount =
-//     await checkboxes.count();
-
-//   console.log(
-//     `☑️ Checkbox ditemukan: ${checkboxCount}`
-//   );
-
-//   for (
-//     let i = 0;
-//     i < checkboxCount;
-//     i++
-//   ) {
-//     const checked =
-//       await checkboxes
-//         .nth(i)
-//         .isChecked()
-//         .catch(() => false);
-
-//     console.log(
-//       `   Checkbox ${i + 1}: ${checked}`
-//     );
-//   }
-
-  // ==========================================================
-  // NEXT
-  // ==========================================================
-
-//   const nextButton = page.locator("#btn-register");
-
-//   await nextButton.waitFor({
-//     state: "visible",
-//     timeout: 10_000,
-//   });
-
-//   const nextDisabled =
-//     await nextButton.isDisabled();
-
-//   console.log(
-//     `🔘 Next disabled: ${nextDisabled}`
-//   );
-
-//   if (nextDisabled) {
-//     await screenshot(
-//       page,
-//       "error-personal-information.png"
-//     );
-
-//     throw new Error(
-//       "Next masih disabled. Gender atau checkbox belum berhasil dipilih."
-//     );
-//   }
-
-//   console.log(
-//     "🖱️ Klik Next..."
-//   );
-
-//   await nextButton.click();
-
-//   console.log(
-//     "✅ Next berhasil diklik."
-//   );
-
-//   await page.waitForTimeout(1_000);
-// }
-
-// ============================================================
-// 7. WAIT PAYMENT
-// ============================================================
-
-// async function waitForPayment(page: Page) {
-//   console.log("🏦 Menunggu payment tab...");
-
-//   const paymentTab = page.getByRole('tablist', { name: 'Payment type' }).getByText('Pay Now');
-
-//   await paymentTab.click();
-
-//   console.log("✅ Payment tab ditemukan.");
-// }
-
-// ============================================================
-// 8. SELECT VIRTUAL ACCOUNT
-// ============================================================
-
-// async function selectVirtualAccount(
-//   page: Page
-// ) {
-//   console.log(
-//     "🏦 Mencari Virtual Account..."
-//   );
-
-//   const virtualAccount = page.getByRole('heading', { name: 'Virtual Account' });
-
-//   console.log(
-//     "🖱️ Membuka Virtual Account..."
-//   );
-
-//   await virtualAccount.click();
-
-//   console.log(
-//     "✅ Virtual Account dibuka."
-//   );
-// }
-
-// ============================================================
-// 9. SELECT BCA
-// ============================================================
-
-// async function selectBCA(
-//   page: Page
-// ) {
-//   console.log(
-//     "🔘 Memilih BCA..."
-//   );
-
-//   const bca = page.getByText('Virtual Account BCA', { exact: true }).first();
-
-//   await bca.waitFor({
-//     state: 'visible',
-//     timeout: 10_000
-//   });
-
-//   await bca.click();
-
-//   console.log("✅ BCA berhasil diklik");
-// }
-
-// ============================================================
-// 10. CONFIRM BCA
-// ============================================================
-
-// async function confirmBCA(
-//   page: Page
-// ) {
-//   console.log(
-//     "⏳ Mengecek confirmation dialog..."
-//   );
-
-//   const confirmation = page
-//     .getByText(
-//       /You are choosing Virtual Account BCA/i
-//     )
-//     .first();
-
-//   try {
-//     await confirmation.waitFor({
-//       state: "visible",
-//       timeout: 1_000,
-//     });
-
-//     console.log(
-//       "⚠️ Confirmation dialog muncul."
-//     );
-
-//     const okButton = page
-//       .locator("button")
-//       .filter({
-//         hasText: /^OK$/i,
-//       })
-//       .first();
-
-//     await okButton.waitFor({
-//       state: "visible",
-//       timeout: 1_000,
-//     });
-
-//     console.log(
-//       "🖱️ Klik OK..."
-//     );
-
-//     await okButton.click();
-
-//     console.log(
-//       "✅ Confirmation BCA selesai."
-//     );
-//   } catch {
-//     console.log(
-//       "ℹ️ Confirmation dialog tidak muncul."
-//     );
-//   }
-// }
-
-// ============================================================
-// 11. WAIT CHECKOUT
-// ============================================================
-
-// async function waitForCheckout(
-//   page: Page
-// ) {
-//   console.log(
-//     "⏳ Menunggu Checkout..."
-//   );
-
-//   const nextButton = page.getByRole('button', { name: 'Next' });
-//   await nextButton.click();
-//   const confirmethodpaymentButton = page.getByRole('button', { name: 'OK', exact: true });
-//   await confirmethodpaymentButton.click();
-
-//   const orderReview = page
-//     .getByText(
-//       "Order Review",
-//       {
-//         exact: true,
-//       }
-//     )
-//     .first();
-
-//   try {
-//     await orderReview.waitFor({
-//       state: "visible",
-//       timeout: 15_000,
-//     });
-
-//     console.log(
-//       "✅ Halaman Checkout terbuka."
-//     );
-//   } catch {
-//     console.log(
-//       "⚠️ Order Review belum ditemukan."
-//     );
-//   }
-
-//   const lastconfirmPaymentButton = page.getByRole('button', { name: 'Pay Now' });
-//   await lastconfirmPaymentButton.click();
-
-//   console.log(
-//     `📍 URL sekarang: ${page.url()}`
-//   );
-// }
-
-// ============================================================
-// 12. MAIN (INCOGNITO MODE)
+// MAIN (INCOGNITO MODE)
 // ============================================================
 
 async function main() {
   console.log("");
-  console.log(
-    "=========================================="
-  );
-  console.log(
-    "    LOKET DWP 2026 BOT (INCOGNITO MODE)"
-  );
-  console.log(
-    "=========================================="
-  );
+  console.log("==========================================");
+  console.log("    LOKET DWP 2026 BOT (INCOGNITO MODE)");
+  console.log("==========================================");
   console.log("");
 
   validateUser();
 
-  // 1. Jalankan browser Chromium dengan flag incognito
   const browser = await chromium.launch({
     headless: false,
     args: [
@@ -713,7 +214,6 @@ async function main() {
     ],
   });
 
-  // 2. Buat context baru yang terisolasi/bersih dari cache & cookies
   const context = await browser.newContext({
     viewport: {
       width: 1366,
@@ -721,97 +221,36 @@ async function main() {
     },
   });
 
-  // 3. Buka halaman di dalam context incognito
   const page = await context.newPage();
 
   try {
-    // --------------------------------------------------------
-    // EVENT
-    // --------------------------------------------------------
-
+    // 1. Open Event
     await openEvent(page);
 
+    // 2. Click Buy Ticket
     await clickBuyTicket(page);
 
-    // --------------------------------------------------------
-    // TICKET
-    // --------------------------------------------------------
-
+    // 3. Select Ticket & Quantity
     await selectFirstAvailableTicket(page);
-    await dismissCookieBanner(page);
-
-    // --------------------------------------------------------
-    // ORDER
-    // --------------------------------------------------------
-
-    // await clickOrderNow(page);
-
-    // --------------------------------------------------------
-    // PERSONAL INFORMATION
-    // --------------------------------------------------------
-
-    // await fillPersonalInformation(page);
-
-    // await completePersonalInformation(page);
-
-    // --------------------------------------------------------
-    // PAYMENT
-    // --------------------------------------------------------
-
-    // await waitForPayment(page);
-
-    // await selectVirtualAccount(page);
-
-    // await selectBCA(page);
-
-    // await confirmBCA(page);
-
-    // --------------------------------------------------------
-    // CHECKOUT
-    // --------------------------------------------------------
-
-    // await waitForCheckout(page);
 
     console.log("");
-    console.log(
-      "=========================================="
-    );
-    console.log(
-      "✅ PROSES OTOMATIS SELESAI"
-    );
-    console.log(
-      "=========================================="
-    );
-    console.log(
-      `📍 URL: ${page.url()}`
-    );
+    console.log("==========================================");
+    console.log("✅ PROSES OTOMATIS TIKET SELESAI");
+    console.log("==========================================");
+    console.log(`📍 URL: ${page.url()}`);
     console.log("");
-    console.log(
-      "⚠️ Bot berhenti di halaman Checkout."
-    );
-    console.log(
-      "Lakukan pembayaran secara manual."
-    );
 
-    // Tahan browser agar tetap terbuka
+    // Tahan browser agar tidak langsung tertutup
     await new Promise(() => {});
   } catch (error) {
     console.log("");
-    console.log(
-      "❌ TERJADI ERROR"
-    );
-
+    console.log("❌ TERJADI ERROR");
     console.error(error);
 
-    await screenshot(
-      page,
-      `error-${Date.now()}.png`
-    );
+    await screenshot(page, `error-${Date.now()}.png`);
 
     console.log("");
-    console.log(
-      `📍 URL terakhir: ${page.url()}`
-    );
+    console.log(`📍 URL terakhir: ${page.url()}`);
 
     await context.close();
     await browser.close();
