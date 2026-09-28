@@ -1,7 +1,8 @@
 import { chromium, Page } from "playwright";
 import dotenv from "dotenv";
 
-dotenv.config();
+// Tentukan path ke file .env2 milik Anda
+dotenv.config({ path: ".env2" });
 
 // ============================================================
 // CONFIG
@@ -15,8 +16,7 @@ const EVENT_URL =
 // ============================================================
 
 const USER = {
-  firstName: process.env.FIRST_NAME ?? "",
-  lastName: process.env.LAST_NAME ?? "",
+  fullName: process.env.FULL_NAME ?? "",
   email: process.env.EMAIL ?? "",
   phone: process.env.PHONE ?? "",
   identityId: process.env.IDENTITY_ID ?? "",
@@ -26,6 +26,8 @@ const USER = {
   dobYear: process.env.DOB_YEAR ?? "",
 
   gender: process.env.GENDER ?? "",
+  methodPayment: process.env.METHODPAYMENT ?? "",
+  va: process.env.VA ?? "",
 };
 
 const TICKET_TARGET = {
@@ -63,8 +65,7 @@ async function waitShort(ms = 300) {
 
 function validateUser() {
   const required = [
-    ["FIRST_NAME", USER.firstName],
-    ["LAST_NAME", USER.lastName],
+    ["FULL_NAME", USER.fullName],
     ["EMAIL", USER.email],
     ["PHONE", USER.phone],
     ["IDENTITY_ID", USER.identityId],
@@ -73,6 +74,8 @@ function validateUser() {
     ["DOB_YEAR", USER.dobYear],
     ["TICKET_CATEGORY", TICKET_TARGET.categoryName],
     ["TICKET_QUANTITY", TICKET_TARGET.quantity],
+    ["METHODPAYMENT", USER.methodPayment],
+    ["VA", USER.va],
   ];
 
   const missing = required
@@ -192,6 +195,243 @@ async function pickQuantity(page: Page, quantity = "1") {
     await page.getByText(quantity, { exact: true }).last().click({ force: true });
   }
 }
+// ============================================================
+// PESAN Tiket
+// ============================================================
+
+async function pesanSekarang(page:Page){
+  console.log("Siap Order...");
+  const btnPesan = page.locator('button').filter({hasText: /Pesan Sekarang/i}).first();
+
+  await btnPesan.waitFor({state: "visible",timeout:2_000});
+  await btnPesan.click({force:true});
+}
+
+async function syaratKetentuan(page:Page){
+  console.log("Scroll syarat ketentuan");
+  // Mengambil tombol berdasarkan aria-label
+  const scrollBottomBtn = page.getByRole('button', { name: 'Scroll to bottom' });
+  // Tunggu dan klik
+  await scrollBottomBtn.waitFor({ state: "visible", timeout: 5_000 });
+  await scrollBottomBtn.click();
+  console.log("⬇️ Tombol auto scroll to bottom diklik.");
+
+  const btnSetuju = page.getByRole('button', { name: 'Ya', exact: true });
+  await btnSetuju.waitFor({state: "visible",timeout: 2_000});
+  await btnSetuju.click();
+}
+
+async function fillPersonalInformation(page:Page){
+  console.log(
+    "📝 Mengisi Personal Information..."
+  );
+  // Full Name
+  const nameInput = page.locator('input[name="firstname"]').first();
+  await nameInput.waitFor({ state: "visible", timeout: 10_000 });
+  await nameInput.fill(USER.fullName);
+
+  console.log(`✅ Nama Lengkap terisi: ${USER.fullName}`);
+
+  // Email
+  const emailInput = page.locator('input[name="email"]').first();
+  await emailInput.waitFor({ state: "visible", timeout: 10_000 });
+  await emailInput.fill(USER.email);
+
+  console.log(`✅ Email terisi: ${USER.email}`);
+
+  //No.HP
+  const phoneInput = page.locator('input[inputmode="numeric"]').first();
+  await phoneInput.waitFor({ state: "visible", timeout: 10_000 });
+  await phoneInput.clear();
+  await phoneInput.fill(USER.phone);
+
+  console.log(`✅ No. Handphone terisi: ${USER.phone}`);
+
+  // Identity
+  const identityInput = page.locator('input[name="identity_id"]').first();
+  await identityInput.waitFor({ state: "visible", timeout: 10_000 });
+  await identityInput.fill(USER.identityId);
+
+  console.log(`✅ Identitas terisi: ${USER.identityId}`);
+
+  // DATE OF BIRTH
+  // ============================================================
+// HELPER: FILL DATE OF BIRTH (DATEPICKER FIX)
+// ============================================================
+
+async function fillDateOfBirth(page: Page) {
+  console.log("📅 Mengisi Tanggal Lahir...");
+
+  // 1. Klik Tombol "Pilih Tanggal Lahir"
+  const dobTrigger = page.locator('button').filter({
+    hasText: /Pilih Tanggal Lahir/i
+  }).first();
+
+  try {
+    await dobTrigger.waitFor({ state: "visible", timeout: 10_000 });
+    await dobTrigger.click({ force: true });
+    await page.waitForTimeout(300); // Tunggu popover terbuka
+
+    // 2. Pilih Bulan (Berdasarkan format nilai di .env, misal "01" atau "Januari")
+    const monthSelect = page.locator('select').first();
+    if (await monthSelect.isVisible().catch(() => false)) {
+      // Mengubah angka bulan ke nama bulan Indonesia jika .env berisi angka (01 -> Januari)
+      const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+      const monthValue = !isNaN(Number(USER.dobMonth)) 
+        ? months[parseInt(USER.dobMonth, 10) - 1] 
+        : USER.dobMonth;
+
+      await monthSelect.selectOption({ label: monthValue }).catch(async () => {
+        await monthSelect.selectOption(USER.dobMonth);
+      });
+    }
+
+    // 3. Pilih Tahun
+    const yearSelect = page.locator('select').last();
+    if (await yearSelect.isVisible().catch(() => false)) {
+      await yearSelect.selectOption(USER.dobYear);
+    }
+
+    await page.waitForTimeout(300);
+
+    // 4. Klik Angka Tanggal yang Aktif (Menghindari tanggal dari bulan tetangga)
+    // Format hari: hilangkan angka 0 di depan jika ada (misal "05" menjadi "5")
+    const dayNumber = parseInt(USER.dobDay, 10).toString();
+
+    // Selector menargetkan button tanggal dalam popover yang TIDAK tersembunyi/disabled
+    const dayBtn = page
+      .locator('button[name="day"]:not([aria-disabled="true"]), table button:not([disabled])')
+      .filter({
+        hasText: new RegExp(`^${dayNumber}$`)
+      })
+      .first();
+
+    await dayBtn.waitFor({ state: "visible", timeout: 5_000 });
+    await dayBtn.click({ force: true });
+
+    console.log(`✅ Tanggal Lahir berhasil dipilih: ${dayNumber} ${USER.dobMonth} ${USER.dobYear}`);
+
+  } catch (error) {
+    console.log("⚠️ Gagal memilih tanggal lahir. Mencoba klik alternatif...");
+    
+    // Fallback: Klik langsung berdasarkan teks persis angka tanggal
+    const dayNumber = parseInt(USER.dobDay, 10).toString();
+    await page.getByRole('button', { name: dayNumber, exact: true }).first().click({ force: true });
+  }
+}
+  await fillDateOfBirth(page);
+
+  // Ambil gender (1 atau 2), lalu klik tombolnya
+  // const value = "1"; // atau "2"
+  await page.locator(`button[value="${USER.gender}"]`).click({ force: true });
+  
+  console.log(
+    "✅ Data personal terisi."
+  );
+}
+// ============================================================
+// SELECT VIRTUAL ACCOUNT
+// ============================================================
+
+async function selectMethodPayment(
+  page: Page
+) {
+  console.log(
+    `🏦 Mencari ${USER.methodPayment}...`
+  );
+
+  // Menargetkan tombol accordion Virtual Account yang posisinya tertutup (closed)
+  const methodPayment = page.locator('button[data-state="closed"]').filter({
+  hasText: new RegExp(USER.methodPayment, 'i')
+  }).first();
+  try {
+    // Tunggu sebentar untuk memastikan accordion tertutup terdeteksi
+    await methodPayment.waitFor({ state: "visible", timeout: 3_000 });
+    await methodPayment.click({ force: true });
+    console.log(`✅ Pilihan ${USER.methodPayment} berhasil dibuka!`);
+  } catch (error) {
+    console.log(`ℹ️ Accordion ${USER.methodPayment} sudah dalam kondisi terbuka atau tidak ditemukan.`);
+  }
+
+  console.log(
+    `✅ ${USER.methodPayment} dibuka.`
+  );
+}
+
+// ============================================================
+// SELECT BCA
+// ============================================================
+
+async function selectVirtualAccount(
+  page: Page
+) {
+  console.log(
+    `🔘 Memilih ${USER.va}...`
+  );
+
+  const optionVirtualAccount = page.getByLabel(`${USER.va}`, { exact: true }).first();
+
+  await optionVirtualAccount.waitFor({
+    state: 'visible',
+    timeout: 10_000
+  });
+
+  await optionVirtualAccount.click();
+
+  console.log("✅ ${USER.va} berhasil diklik");
+}
+
+  // ==========================================================
+  // TERMS & CONDITIONS
+  // ==========================================================
+
+  async function syaratKetentuanPrivacy(page:Page){
+  console.log("☑️ Mencari checkbox Terms & Conditions...");
+
+  const termsCheckbox = page.locator('#terms');
+
+  await termsCheckbox.waitFor({
+    state: "visible",
+    timeout: 10_000,
+  });
+
+  await termsCheckbox.check();
+
+  console.log("✅ Terms & Conditions dicentang.");
+
+  // ==========================================================
+  // PERSONAL DATA PROCESSING POLICY
+  // ==========================================================
+
+  console.log(
+    "☑️ Mencari Personal Data Processing Policy..."
+  );
+
+  const privacyCheckbox = page.locator('#consent');
+
+  await privacyCheckbox.waitFor({
+    state: "visible",
+    timeout: 10_000,
+  });
+
+  await privacyCheckbox.check();
+
+  console.log(
+    "✅ Personal Data Processing Policy dicentang."
+  );
+
+  await waitShort(500);
+}
+
+async function bayarSekarang (page:Page){
+  const btnBayar = page.locator('button').filter({hasText: /Bayar Sekarang/i}).first();
+  await btnBayar.click();
+}
+
+  // ==========================================================
+  // KLIK BAYAR SEKARANG
+  // ==========================================================
+  
 
 // ============================================================
 // MAIN (INCOGNITO MODE)
@@ -232,6 +472,18 @@ async function main() {
 
     // 3. Select Ticket & Quantity
     await selectFirstAvailableTicket(page);
+    // 4. Pesan tiket
+    await pesanSekarang(page);
+    await syaratKetentuan(page);
+    // 5. Isi Data Diri
+    await fillPersonalInformation(page);
+    // 6. Pilih Methode Pembayaran
+    await selectMethodPayment(page);
+    await selectVirtualAccount(page);
+    // 7. Ceklis Syarat Ketentuan & Privacy
+    await syaratKetentuanPrivacy(page);
+    // 8. Bayar
+    await bayarSekarang(page);
 
     console.log("");
     console.log("==========================================");
