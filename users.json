@@ -1,0 +1,18 @@
+[
+  {
+    "fullName": "Fikri Ramatest2",
+    "firstName": "Fikri",
+    "lastName": "Ramadhan1",
+    "email": "fikri.ramatest2@example.com",
+    "phone": "8129096212",
+    "identityId": "1234521801990002",
+    "dobDay": "18",
+    "dobMonth": "Januari",
+    "dobYear": "1999",
+    "gender": "2",
+    "ticketCategory": "DIAMOND VIP",
+    "ticketQuantity": "3",
+    "methodPayment": "Virtual Account",
+    "va": "Virtual Account BCA"
+  }
+]
