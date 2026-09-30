@@ -9,7 +9,7 @@ DOB_YEAR=1999
 
 GENDER=2
 METHODPAYMENT=Virtual Account
-VA=Virtual Account BCA
+optionVirtualAccount=Virtual Account BCA
 
 TICKET_CATEGORY=DIAMOND VIP
 TICKET_QUANTITY=1
