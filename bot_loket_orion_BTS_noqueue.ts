@@ -35,6 +35,7 @@ interface PaymentResult {
   amount: string;
   bookingCode: string;
   methodPayment: String;
+  ticketQuantity?: string;
   paymentDeadline: String;
   timestamp: string;
 }
@@ -185,39 +186,6 @@ async function syaratKetentuan(page: Page, userId: string) {
   await page.locator('div[role="dialog"]').waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
 }
 
-// 5. FILL PERSONAL INFORMATION
-async function fillPersonalInformation(page: Page, user: UserData, userId: string) {
-  console.log(`[${userId}] 📝 Mengisi Personal Information...`);
-
-  // Full Name
-  const nameInput = page.locator('input[name="firstname"]').first();
-  await nameInput.waitFor({ state: "visible", timeout: 10_000 });
-  await nameInput.fill(user.fullName);
-
-  // Email
-  const emailInput = page.locator('input[name="email"]').first();
-  await emailInput.waitFor({ state: "visible", timeout: 10_000 });
-  await emailInput.fill(user.email);
-
-  // No. HP
-  const phoneInput = page.locator('input[inputmode="numeric"]').first();
-  await phoneInput.waitFor({ state: "visible", timeout: 10_000 });
-  await phoneInput.clear();
-  await phoneInput.fill(user.phone);
-
-  // Identity
-  const identityInput = page.locator('input[name="identity_id"]').first();
-  await identityInput.waitFor({ state: "visible", timeout: 10_000 });
-  await identityInput.fill(user.identityId);
-
-  // Date of Birth
-  await fillDateOfBirth(page, user, userId);
-
-  // Gender
-  await page.locator(`button[value="${user.gender}"]`).click({ force: true });
-  console.log(`[${userId}] ✅ Identitas & Data Diri lengkap terisi.`);
-}
-
 async function fillDateOfBirth(page: Page, user: UserData, userId: string) {
   const dobTrigger = page.locator("button").filter({ hasText: /Pilih Tanggal Lahir/i }).first();
 
@@ -264,18 +232,66 @@ async function fillDateOfBirth(page: Page, user: UserData, userId: string) {
   }
 }
 
+// 5. FILL PERSONAL INFORMATION
+async function fillPersonalInformation(page: Page, user: UserData, userId: string) {
+  console.log(`[${userId}] ⚡ Mengisi Personal Information secara instan...`);
+
+  // 1. Tunggu input pertama muncul sebagai penanda formulir sudah loaded
+  const nameInput = page.locator('input[name="firstname"]').first();
+  await nameInput.waitFor({ state: "visible", timeout: 10_000 });
+
+  // 2. Injeksi semua nilai input secara bersamaan dalam 1 ms (Tanpa nested function)
+  await page.evaluate((u) => {
+    const fields = [
+      { selector: 'input[name="firstname"]', val: u.fullName },
+      { selector: 'input[name="email"]', val: u.email },
+      { selector: 'input[inputmode="numeric"]', val: u.phone },
+      { selector: 'input[name="identity_id"]', val: u.identityId }
+    ];
+
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLInputElement.prototype,
+      "value"
+    )?.set;
+
+    fields.forEach((item) => {
+      const input = document.querySelector(item.selector) as HTMLInputElement | null;
+      if (input && item.val) {
+        if (nativeSetter) {
+          nativeSetter.call(input, item.val);
+        } else {
+          input.value = item.val;
+        }
+
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        input.dispatchEvent(new Event("blur", { bubbles: true }));
+      }
+    });
+  }, user);
+
+  // 3. Date of Birth & Gender tetap dijalankan
+  await fillDateOfBirth(page, user, userId);
+  await page.locator(`button[value="${user.gender}"]`).click({ force: true });
+
+  console.log(`[${userId}] ✅ Identitas & Data Diri instan terisi.`);
+}
+
 // 6. METODE PEMBAYARAN
 async function selectMethodPayment(page: Page, methodPaymentName: string, userId: string) {
-  console.log(`[${userId}] 🏦 Mencari ${methodPaymentName}...`);
-  const methodPayment = page.locator('button[data-state="closed"]').filter({
-    hasText: new RegExp(methodPaymentName, "i"),
-  }).first();
+  console.log(`[${userId}] 🏦 Mencari metode pembayaran: ${methodPaymentName}...`);
+  
+  // Mencari tombol accordion yang tepat dengan regex eksak
+  const methodPayment = page.locator('button, div[role="button"]')
+    .filter({ hasText: new RegExp(`^\\s*${methodPaymentName}\\s*$`, "i") })
+    .first();
 
   try {
-    await methodPayment.waitFor({ state: "visible", timeout: 3_000 });
+    await methodPayment.waitFor({ state: "visible", timeout: 5_000 });
     await methodPayment.click({ force: true });
+    console.log(`[${userId}] ✅ Accordion ${methodPaymentName} berhasil dibuka.`);
   } catch {
-    console.log(`[${userId}] ℹ️ Accordion ${methodPaymentName} sudah terbuka.`);
+    console.log(`[${userId}] ℹ️ Accordion ${methodPaymentName} mungkin sudah terbuka / fallback.`);
   }
 }
 
@@ -310,7 +326,14 @@ async function notifWhatsapp(page: Page, userId: string) {
 }
 
 // 9. BAYAR SEKARANG & SCRAPE DATA TRANSAKSI
-async function bayarSekarang(page: Page, user: UserData, userId: string, index: number) {
+// Tambahkan parameter startTime di baris fungsi
+async function bayarSekarang(
+  page: Page,
+  user: UserData,
+  userId: string,
+  index: number,
+  startTime: number
+) {
   console.log(`[${userId}] 💳 Menekan tombol Bayar Sekarang...`);
   const payBtn = page.getByRole("button", { name: "Bayar Sekarang" });
 
@@ -319,42 +342,39 @@ async function bayarSekarang(page: Page, user: UserData, userId: string, index: 
   await payBtn.click();
   console.log(`[${userId}] 🚀 Berhasil mengeklik tombol Bayar Sekarang!`);
 
-  // --- 1. TUNGGU HALAMAN KONFIRMASI PEMBAYARAN SELESAI LOAD ---
-  // Menunggu bekas Kad Pembayaran atau label "Kode Pemesanan" muncul di DOM
-  const orderContainer = page.locator('div.border-web-border-inactive, *:has-text("Kode Pemesanan")').first();
-  await orderContainer.waitFor({ state: "visible", timeout: 25_000 });
+  // --- 1. TUNGGU HALAMAN TRANSAKSI DENGAN TIMEOUT LEBIH LONGGAR (UNTUK PARALEL) ---
+  await page.waitForLoadState("networkidle").catch(() => {});
   
-  // Beri sedikit masa untuk rendering teks respons server
-  await page.waitForTimeout(1_000);
+  // Tunggu indikator transaksi muncul di DOM
+  const orderContainer = page.locator('body').filter({
+    hasText: /Kode Pemesanan|Virtual Account|Nomor VA|Total Pembayaran/i,
+  });
+  await orderContainer.waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
+  await page.waitForTimeout(1_500); // Jeda ekstra untuk rendering teks paralel
 
-  // --- 2. AMBIL KODE PEMESANAN (Eksklusif & Tepat) ---
-  // Strategi A: Cari label "Kode Pemesanan", lalu ambil span nilai di samping/bawahnya
+  // --- 2. SCRAPING TEKS SELURUH HALAMAN (ROBUST FALLBACK) ---
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  const allSpans = await page.locator("span, div, p").allInnerTexts().catch(() => []);
+  const cleanedSpans = allSpans.map((t) => t.trim()).filter(Boolean);
+
+  // --- 3. KODE PEMESANAN ---
+  let bookingCode = "-";
   const bookingCodeLocator = page
-    .locator('div')
-    .filter({ has: page.locator('span', { hasText: /^Kode Pemesanan$/i }) })
-    .locator('span.font-medium, span')
+    .locator("div")
+    .filter({ has: page.locator("span", { hasText: /^Kode Pemesanan$/i }) })
+    .locator("span.font-medium, span")
     .last();
 
-  let bookingCode = "-";
   if (await bookingCodeLocator.isVisible().catch(() => false)) {
     const extractedText = (await bookingCodeLocator.innerText()).trim();
-    // Validasi agar tidak mengambil kata label "Kode Pemesanan" atau kata status
-    if (
-      extractedText &&
-      !/kode/i.test(extractedText) &&
-      !/pending|paid|expired|success|bca|virtual/i.test(extractedText)
-    ) {
+    if (extractedText && !/kode/i.test(extractedText)) {
       bookingCode = extractedText;
     }
   }
 
-  // Strategi B (Fallback): Cari dari array span dengan filter ketat
+  // Fallback Regex Kode Pemesanan jika locator meleset
   if (bookingCode === "-") {
-    const allSpans = await page.locator('div.border-web-border-inactive span').allInnerTexts();
-    const cleanedSpans = allSpans.map((t) => t.trim()).filter(Boolean);
-
-    const blackListWords = ["PENDING", "PAID", "EXPIRED", "SUCCESS", "VIRTUAL", "ACCOUNT", "BCA", "MANDIRI", "BNI", "BRI"];
-
+    const blackListWords = ["PENDING", "PAID", "EXPIRED", "SUCCESS", "VIRTUAL", "ACCOUNT", "BCA", "MANDIRI", "BNI", "BRI", "CREDIT", "CARD"];
     const matchedCode = cleanedSpans.find(
       (text) =>
         /^[A-Z0-9]{6,10}$/.test(text) &&
@@ -364,53 +384,36 @@ async function bayarSekarang(page: Page, user: UserData, userId: string, index: 
     if (matchedCode) bookingCode = matchedCode;
   }
 
-  // --- 3. AMBIL BATAS WAKTU PEMBAYARAN ---
-  const paymentDeadlineLocator = page.locator('span.font-semibold.text-web-typography-light').first();
+  // --- 4. NOMOR VA ---
+  let vaNumber = "-";
+  const matchedVA = cleanedSpans.find((text) => /^\d{10,25}$/.test(text));
+  if (matchedVA) {
+    vaNumber = matchedVA;
+  } else {
+    // Regex Search langsung dari seluruh teks halaman
+    const regexVaMatch = bodyText.match(/\b\d{10,25}\b/);
+    if (regexVaMatch) vaNumber = regexVaMatch[0];
+  }
+
+  // --- 5. METODE & NOMINAL & BATAS WAKTU ---
+  const vaLabelLocator = page.locator("div.border-web-border-inactive span.font-medium").first();
+  const vaLabel = (await vaLabelLocator.isVisible().catch(() => false))
+    ? (await vaLabelLocator.innerText()).trim()
+    : user.methodPayment || "Virtual Account";
+
+  const paymentDeadlineLocator = page.locator("span.font-semibold.text-web-typography-light").first();
   const paymentDeadline = (await paymentDeadlineLocator.isVisible().catch(() => false))
     ? (await paymentDeadlineLocator.innerText()).trim()
     : "-";
 
-  // --- 4. AMBIL METODE PEMBAYARAN (misal: "Virtual Account BCA") ---
-  const vaLabelLocator = page.locator('div.border-web-border-inactive span.font-medium').first();
-  const vaLabel = (await vaLabelLocator.isVisible().catch(() => false))
-    ? (await vaLabelLocator.innerText()).trim()
-    : "Virtual Account";
-
-  // --- 5. AMBIL NOMOR VA DAN NOMINAL PEMBAYARAN ---
-  const allSpans = await page.locator('div.border-web-border-inactive span').allInnerTexts();
-  const cleanedSpans = allSpans.map((t) => t.trim()).filter(Boolean);
-
-  // Fallback Kode Pemesanan jika locator atas meleset
-  if (bookingCode === "-") {
-    const matchedCode = cleanedSpans.find(
-      (text) =>
-        /^[A-Z0-9]{6,10}$/.test(text) &&
-        !text.toLowerCase().includes("virtual") &&
-        !text.toLowerCase().includes("kode")
-    );
-    if (matchedCode) bookingCode = matchedCode;
-  }
-
-  // --- AMBIL QUANTITY TIKET ---
-  // A. Menggunakan data input user (Paling Akurat & Cepat)
-  let ticketQty = user.ticketQuantity || process.env.TICKET_QUANTITY || "1";
-
-  // B. Fallback Scraping dari Halaman Konfirmasi (Mencari pola angka x tiket, contoh: "1x" atau "1 Tiket")
-  if (!ticketQty) {
-    const allSpans = await page.locator('div.border-web-border-inactive span').allInnerTexts();
-    const qtyMatch = allSpans.find((t) => /^\d+\s*(x|tiket)/i.test(t.trim()));
-    if (qtyMatch) {
-      ticketQty = qtyMatch.trim();
-    }
-  }
-
-  // Filter Nomor VA (10-25 digit)
-  const vaNumber = cleanedSpans.find((text) => /^\d{10,25}$/.test(text)) || "-";
-
-  // Filter Nominal (Bermula dengan 'Rp')
   const totalAmount = cleanedSpans.find((text) => text.startsWith("Rp")) || "-";
+  const ticketQty = user.ticketQuantity || process.env.TICKET_QUANTITY || "1";
 
-  // Log Hasil ke Terminal
+  // --- TIMER EKSEKUSI ---
+  const endTime = performance.now();
+  const totalExecutionTime = ((endTime - startTime) / 1000).toFixed(2);
+
+  // LOG TERMINAL
   console.log(`========================================`);
   console.log(`[${userId}] 👤 Nama          : ${user.fullName}`);
   console.log(`[${userId}] 🎫 Kode Pemesanan : ${bookingCode}`);
@@ -419,12 +422,14 @@ async function bayarSekarang(page: Page, user: UserData, userId: string, index: 
   console.log(`[${userId}] 💳 Nomor VA      : ${vaNumber}`);
   console.log(`[${userId}] 💰 Nominal       : ${totalAmount}`);
   console.log(`[${userId}] ⏰ Batas Waktu    : ${paymentDeadline}`);
+  console.log(`[${userId}] ⚡ Waktu Eksekusi : ${totalExecutionTime} detik`);
   console.log(`========================================`);
 
-  // Simpan Ke File results.json
+  // SIMPAN HASIL
   const resultData: PaymentResult = {
     userId: user.id || index + 1,
     fullName: user.fullName,
+    ticketQuantity: ticketQty,
     bookingCode: bookingCode,
     methodPayment: vaLabel,
     vaNumber: vaNumber,
@@ -434,7 +439,7 @@ async function bayarSekarang(page: Page, user: UserData, userId: string, index: 
   };
   savePaymentResult(resultData);
 
-  // Ambil Tangkapan Layar (Screenshot)
+  // SCREENSHOT
   const cleanName = user.fullName.replace(/[^a-zA-Z0-9]/g, "_");
   const screenshotPath = `./screenshots/${cleanName}_payment.png`;
   await screenshot(page, screenshotPath);
@@ -447,30 +452,28 @@ async function bayarSekarang(page: Page, user: UserData, userId: string, index: 
 async function processUserTask(browser: Browser, user: UserData, index: number) {
   const userId = `USER-${index + 1} (${user.fullName})`;
   
-  // Staggering Launch (Jeda 1.5 detik antar user agar tidak kena Rate-Limit IP)
+  // Staggering Launch
   const delayTime = index * 1500;
   if (delayTime > 0) {
     console.log(`[${userId}] ⏳ Menunggu ${delayTime / 1000} detik sebelum meluncur...`);
     await new Promise((resolve) => setTimeout(resolve, delayTime));
   }
 
+  // --- START TIMER ---
+  const startTime = performance.now(); // Catat waktu mulai
   console.log(`🚀 [${userId}] Memulai bot...`);
 
-  // Context terisolasi per user (Incognito)
   const context = await browser.newContext({
     viewport: { width: 1366, height: 768 },
-    /*
-    proxy: {
-      server: 'http://proxy-server.com:8080', // Hanya Host & Port
-      username: 'username_proxy_kamu',        // Username dipisah
-      password: 'password_proxy_kamu'         // Password dipisah
-    }
-    */
   });
 
   const page = await context.newPage();
+  // Blokir gambar, font, stylesheet tidak penting, dan media
+  await page.route("**/*.{png,jpg,jpeg,svg,webp,css,woff,woff2}", (route) => route.abort());
 
-  // Otomatis suntikkan CSS Anti-Cookie di setiap navigasi
+  // Blokir skrip pelacak/analytics
+  await page.route("**/*{analytics,google-analytics,facebook,pixel,hotjar}*", (route) => route.abort());
+
   page.on("domcontentloaded", async () => {
     await injectAntiCookieCSS(page);
   });
@@ -480,7 +483,7 @@ async function processUserTask(browser: Browser, user: UserData, index: number) 
     const methodPayment = user.methodPayment || process.env.METHODPAYMENT || "Virtual Account";
     const va = user.va || process.env.VA || "BCA";
 
-    // Workflow
+    // Alur Utama
     await openEvent(page, userId);
     await clickBuyTicket(page, userId);
     await selectFirstAvailableTicket(page, qty, userId);
@@ -490,14 +493,18 @@ async function processUserTask(browser: Browser, user: UserData, index: number) 
     await selectMethodPayment(page, methodPayment, userId);
     await selectVirtualAccount(page, va, userId);
     await syaratKetentuanPrivacy(page, userId);
-    // await notifWhatsapp(page, userId);
-    await bayarSekarang(page, user, userId, index);
+    await notifWhatsapp(page, userId);
+    
+    // Kirim startTime ke fungsi bayarSekarang untuk dihitung di log akhir
+    await bayarSekarang(page, user, userId, index, startTime);
 
     console.log(`\n🎉 [${userId}] PROSES OTOMATIS TIKET SELESAI!`);
     console.log(`📍 URL: ${page.url()}\n`);
 
   } catch (error) {
-    console.error(`❌ [${userId}] TERJADI ERROR:`, error);
+    // --- CALCULATE TIMER ON ERROR ---
+    const errorTime = ((performance.now() - startTime) / 1000).toFixed(2);
+    console.error(`❌ [${userId}] TERJADI ERROR (Waktu berjalan: ${errorTime}s):`, error);
     await screenshot(page, `./screenshots/error-user-${index + 1}-${Date.now()}.png`);
   }
 }
