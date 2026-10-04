@@ -1,35 +1,19 @@
 [
   {
-    "fullName": "Fikri Ramatestosatos",
+    "fullName": "Fikri Ramatee35",
     "firstName": "Fikri",
-    "lastName": "Ramadhan1",
-    "email": "fikri.ramatestosssjgfd2@example.com",
-    "phone": "812909622124443",
-    "identityId": "12345218019932232123",
+    "lastName": "Ramadha67424ee",
+    "email": "fikri.98334233@example.com",
+    "phone": "812134213332431",
+    "identityId": "1234559933481",
     "dobDay": "18",
-    "dobMonth": "Januari",
+    "dobMonth": "01",
     "dobYear": "1999",
     "gender": "1",
     "ticketCategory": "GOLD VIP",
     "ticketQuantity": "1",
     "methodPayment": "Virtual Account",
-    "va": "Virtual Account BCA"
-  },
-  {
-    "fullName": "Fikri Ramatestosssda",
-    "firstName": "Fikri",
-    "lastName": "Ramadhan1",
-    "email": "fikri.ramatestosssjfg@example.com",
-    "phone": "8129096223333433",
-    "identityId": "12345218019900228314",
-    "dobDay": "18",
-    "dobMonth": "Januari",
-    "dobYear": "1999",
-    "gender": "2",
-    "vipCode": "825CKV",
-    "ticketCategory": "GOLD VIP",
-    "ticketQuantity": "3",
-    "methodPayment": "Virtual Account",
-    "va": "Virtual Account BCA"
+    "jenisVA": "Virtual Account BCA",
+    "receiveWaNotif": true
   }
 ]
